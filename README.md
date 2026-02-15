@@ -1,27 +1,28 @@
 # pdfjs-unified-demo
 
-## 目的
-本プロジェクトは、PDF 表示方式を **JavaScript 実装 1 本**に統一し、
-ブラウザ判定で `PDF.js v2.2.228` と `PDF.js v5.4.530` を切り替えることを目的とします。
+## 概要
+このプロジェクトは、PDF.js のバージョン（v2.2.228 / v5.4.530）を
+JavaScript で判定し、4 つの JSP 表示パターンへ共通適用するサンプルです。
 
-## 実装されている機能
-- JavaScript のみで PDF.js バージョンを判定（UA + 機能検出）
-- `OpenWin` / `iframe` / `frame` / `<a>` の 4 パターン対応
-
-## 利用順序
-1. `index.jsp` を開く。
-2. `JavaScript Viewer` を選択する。
-3. `sampleA.pdf` / `sampleB.pdf` を `OpenWin` または `iframe` で確認する。
-4. 必要に応じて `frame` や `<a>` でも同じ `data-pdf-url` 方式で利用する。
-
-## 構成（主要）
-- `pom.xml`
-- `src/main/webapp/index.jsp`
-- `src/main/webapp/jsp/AmountList-javascript.jsp`
+## 共通 JavaScript
 - `src/main/webapp/js/LoadPdfjsViewer.js`
-- `src/main/webapp/pc/...`（PDF.js v2 / v5 viewer）
-- `src/main/webapp/pdfs/sampleA.pdf`
-- `src/main/webapp/pdfs/sampleB.pdf`
+- 役割:
+  - UA + 機能検出で版数を決定
+  - 占位子 `{pdfjs-path-url}` を実際の版数パスに置換
+  - `openWin`, `iframe`, `a`, `frameset` を 1 つのロジックで対応
+
+## JSP パターン（各方式 1 ファイル）
+1. `src/main/webapp/jsp/PatternOpenWin.jsp`
+   - `onclick="return openWin(this.dataset.viewerUrl, ...)"` 形式
+2. `src/main/webapp/jsp/PatternIframe.jsp`
+   - 同一ページで iframe 表示
+3. `src/main/webapp/jsp/PatternBlankLink.jsp`
+   - `<a target="_blank">` 表示
+4. `src/main/webapp/jsp/PatternFrameset.jsp`
+   - 初期化時に frame src を設定
+
+## 入口
+- `src/main/webapp/index.jsp`
 
 ## 動作環境
 - JDK 8
@@ -32,6 +33,3 @@
 ```bash
 mvn clean package
 ```
-
-生成物:
-- `target/pdfjs-unified-demo.war`
