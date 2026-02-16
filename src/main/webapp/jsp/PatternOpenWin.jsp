@@ -14,7 +14,7 @@
      data-pdf-url="${pageContext.request.contextPath}/pdfs/sampleA.pdf"
      data-page="1"
      data-viewer-template="{pdfjs-path-url}/web/viewer.html?file={pdf-file-url-encoded}#page={page}"
-     onclick="return openWin(this.dataset.viewerUrl, 'report_pop_A');">
+     onclick="return openWin(PdfViewerRouter.ensureViewerUrl(this), 'report_pop_A');">
     レポートA
   </a>
   <br />
@@ -22,7 +22,7 @@
      data-pdf-url="${pageContext.request.contextPath}/pdfs/sampleB.pdf"
      data-page="1"
      data-viewer-template="{pdfjs-path-url}/web/viewer.html?file={pdf-file-url-encoded}#page={page}"
-     onclick="return openWin(this.dataset.viewerUrl, 'report_pop_B');">
+     onclick="return openWin(PdfViewerRouter.ensureViewerUrl(this), 'report_pop_B');">
     レポートB
   </a>
 

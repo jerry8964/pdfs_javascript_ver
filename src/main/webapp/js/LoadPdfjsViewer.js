@@ -6,8 +6,9 @@
  * - openWin は onclick から openWin(this.dataset.viewerUrl, ...) 形式で利用する。
  */
 (function (global) {
-  const PDFJS_BASE_LEGACY = "/pc/pdf_js_2.2.228";
-  const PDFJS_BASE_MODERN = "/pc/pdf_js_5.4.530";
+  const PDFJS_BASE_LEGACY = "/pc/static/pdf_js_v2.2.228";
+  const PDFJS_BASE_MODERN = "/pc/static/pdf_js_v5.4.530";
+  let initialized = false;
 
   function parseMajor(userAgent, token) {
     const index = userAgent.indexOf(token);
@@ -150,7 +151,7 @@
   function setIframeViewer(iframeId, viewerUrl) {
     const iframe = document.getElementById(iframeId);
     if (!iframe) return false;
-    iframe.src = viewerUrl;
+    iframe.src = viewerUrl || "about:blank";
     return false;
   }
 
@@ -196,12 +197,55 @@
     });
   }
 
+  // 兜底: 必要時に data-viewer-url を再計算する。
+  function ensureViewerUrl(element) {
+    if (!element) return "";
+    const current = element.getAttribute("data-viewer-url") || "";
+    if (current && current.indexOf("{pdfjs-path-url}") < 0) {
+      return current;
+    }
+    const resolved = resolveTemplate(element);
+    if (resolved) {
+      element.setAttribute("data-viewer-url", resolved);
+    }
+    return resolved;
+  }
+
+  // クリック直前に URL を補完する（初期化漏れ時の保険）。
+  function installClickFallback() {
+    document.addEventListener(
+      "click",
+      function (event) {
+        let node = event.target;
+        while (node && node !== document) {
+          if (node.nodeType === 1 && node.hasAttribute && node.hasAttribute("data-viewer-template")) {
+            const url = ensureViewerUrl(node);
+            if (!url) {
+              return;
+            }
+            // target=_blank リンクの補完
+            if (node.tagName === "A" && node.getAttribute("data-link-mode") === "blank") {
+              node.href = url;
+              node.target = "_blank";
+              node.rel = "noopener noreferrer";
+            }
+            return;
+          }
+          node = node.parentNode;
+        }
+      },
+      true
+    );
+  }
+
   function applyViewerVersion() {
     const el = document.getElementById("viewerVersion");
     if (el) el.textContent = resolveViewerVersion();
   }
 
   function initPage() {
+    if (initialized) return;
+    initialized = true;
     applyAllTemplates(document);
     applyViewerVersion();
   }
@@ -212,10 +256,15 @@
     buildViewerUrl: buildViewerUrl,
     resolveViewerVersion: resolveViewerVersion,
     setIframeViewer: setIframeViewer,
-    openWin: openWin
+    openWin: openWin,
+    ensureViewerUrl: ensureViewerUrl
   };
 
-  document.addEventListener("DOMContentLoaded", function () {
+  installClickFallback();
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initPage);
+  } else {
     initPage();
-  });
+  }
 })(window);
