@@ -13,7 +13,7 @@ JavaScript で判定し、4 つの JSP 表示パターンへ共通適用する�
 
 ## JSP パターン（各方式 1 ファイル）
 1. `src/main/webapp/jsp/PatternOpenWin.jsp`
-   - `onclick="return openWin(this.dataset.viewerUrl, ...)"` 形式
+   - `onclick="return PdfViewerRouter.openWin(...)"` 形式（v5 初期化失敗時は v2 へ自動降格）
 2. `src/main/webapp/jsp/PatternIframe.jsp`
    - 同一ページで iframe 表示
 3. `src/main/webapp/jsp/PatternBlankLink.jsp`
