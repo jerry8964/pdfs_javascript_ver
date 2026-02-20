@@ -291,10 +291,20 @@
     return "v2.2.228";
   }
 
+  // viewer.html の file= パラメータ用エンコード。
+  // 重要: v2 互換のため "/" は保持しつつ、クエリを壊す文字だけをエスケープする。
+  function encodeFileUrlForViewer(fileUrl) {
+    const value = fileUrl || "";
+    return encodeURI(value)
+      .replace(/\?/g, "%3F")
+      .replace(/&/g, "%26")
+      .replace(/#/g, "%23");
+  }
+
   function buildViewerUrl(fileUrl, page) {
     const contextPath = getContextPath();
     const basePath = resolvePdfjsBasePath();
-    let url = contextPath + basePath + "/web/viewer.html?file=" + encodeURIComponent(fileUrl);
+    let url = contextPath + basePath + "/web/viewer.html?file=" + encodeFileUrlForViewer(fileUrl);
     if (page) {
       url += "#page=" + encodeURIComponent(page);
     }
@@ -326,7 +336,7 @@
 
     return template
       .replace(/\{pdfjs-path-url\}/g, basePath)
-      .replace(/\{pdf-file-url-encoded\}/g, encodeURIComponent(fileUrl))
+      .replace(/\{pdf-file-url-encoded\}/g, encodeFileUrlForViewer(fileUrl))
       .replace(/\{pdf-file-url\}/g, fileUrl)
       .replace(/\{page\}/g, encodeURIComponent(page));
   }
