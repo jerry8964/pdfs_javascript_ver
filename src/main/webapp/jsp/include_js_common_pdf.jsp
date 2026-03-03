@@ -1,19 +1,13 @@
 <%@ page import="com.example.pdfjs.PdfjsGateUtil" %>
 <%
-  String pref = PdfjsGateUtil.readPrefFromCookies(request.getCookies());
-  int ttlDays = PdfjsGateUtil.resolveTtlDays(application.getInitParameter("pdfjs.pref.ttl.days"));
-  boolean hasPref = pref != null;
-  boolean uaOkForV5 = false;
-  if (!hasPref) {
-    uaOkForV5 = PdfjsGateUtil.isUaOkForV5(request.getHeader("User-Agent"));
-  }
+  // サーバー側で UA を判定し、初期候補（v2/v5）をフロントへ渡す。
+  String uaSuggest = PdfjsGateUtil.suggestVersionFromUa(request.getHeader("User-Agent"));
 %>
 <script>
-  window.__PDFJS_GATE__ = {
-    pref: <%= hasPref ? "'" + pref + "'" : "null" %>,
-    uaOk: <%= hasPref ? "null" : (uaOkForV5 ? "true" : "false") %>,
-    ttlDays: <%= ttlDays %>,
-    contextPath: '<%= request.getContextPath() %>'
-  };
+  // フロント側の判定入力値（UA 判定の第一ゲート）。
+  window.__PDFJS_UA_SUGGEST__ = '<%= uaSuggest %>';
+  // viewer パスは環境差分が出やすいため、共通 include で一元管理する。
+  window.__PDFJS_BASE_V2__ = '/pc/static/js/pdf_js_2.2.8/';
+  window.__PDFJS_BASE_V5__ = '/pc/static/js/pdf_js_5.4.530-legacy/';
 </script>
 <script defer src="${pageContext.request.contextPath}/js/LoadPdfjsViewer.js"></script>

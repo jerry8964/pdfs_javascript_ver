@@ -1,277 +1,125 @@
 /* global document, window */
 (function (global) {
-  var PDFJS_DIR_LEGACY = "pdf_js_v2.2.228";
-  var PDFJS_DIR_MODERN = "pdf_js_v5.4.530-legacy";
-  var PREF_COOKIE_NAME = "pdfjs_pref";
-  var PROBE_SCRIPT_PATH = "/js/probe-v5-syntax.js";
-  var VIEWER_BOOT_TIMEOUT_MS = 6000;
-
   var initialized = false;
-  var decisionResolved = false;
-  var decisionCallbacks = [];
 
-  function getGateConfig() {
-    var gate = global.__PDFJS_GATE__ || {};
-    var pref = normalizePref(gate.pref);
+  // 受け取ったバージョン候補を v2/v5 のどちらかに正規化する。
+  function normalizeVersion(value) {
+    return value === "v5" ? "v5" : "v2";
+  }
+
+  // ES14 相当の最低要件（findLast/findLastIndex）を確認する。
+  function supportsEs14Gate() {
+    return (
+      typeof Array.prototype.findLast === "function" &&
+      typeof Array.prototype.findLastIndex === "function"
+    );
+  }
+
+  function resolveFinalVersion() {
+    // 最終判定:
+    // 1) UA 候補が v2 なら即 v2
+    // 2) UA 候補が v5 の場合のみ ES 機能を再確認
+    // 3) 例外時は必ず v2（Fail-safe）
+    try {
+      var uaSuggest = normalizeVersion(global.__PDFJS_UA_SUGGEST__);
+      if (uaSuggest !== "v5") return "v2";
+      return supportsEs14Gate() ? "v5" : "v2";
+    } catch (e) {
+      return "v2";
+    }
+  }
+
+  function normalizeBasePath(path) {
+    var value = (path || "").toString();
+    if (!value) return "/";
+    if (value.charAt(0) !== "/") value = "/" + value;
+    if (value.charAt(value.length - 1) !== "/") value += "/";
+    return value;
+  }
+
+  function getViewerPaths() {
+    // viewer.html の実パス定義。
+    // 環境差分がある場合は include JSP 側のグローバル変数で上書き可能。
+    var baseV2 = normalizeBasePath(global.__PDFJS_BASE_V2__ || "/pc/static/js/pdf_js_2.2.8/");
+    var baseV5 = normalizeBasePath(global.__PDFJS_BASE_V5__ || "/pc/static/js/pdf_js_5.4.530-legacy/");
     return {
-      pref: pref,
-      uaOk: gate.uaOk === true,
-      ttlDays: normalizeTtlDays(gate.ttlDays),
-      contextPath: typeof gate.contextPath === "string" ? gate.contextPath : ""
+      v2Viewer: baseV2 + "web/viewer.html",
+      v5Viewer: baseV5 + "web/viewer.html"
     };
   }
 
-  function normalizePref(value) {
-    if (value === "v2" || value === "v5") return value;
-    return null;
+  function replaceViewerPath(pathname) {
+    // 安全性優先:
+    // 既知の viewer.html パスに完全一致した場合のみ v2/v5 を切り替える。
+    var viewers = getViewerPaths();
+    if (pathname !== viewers.v2Viewer && pathname !== viewers.v5Viewer) return pathname;
+    return global.__PDFJS_VERSION__ === "v5" ? viewers.v5Viewer : viewers.v2Viewer;
   }
 
-  function normalizeTtlDays(value) {
-    var parsed = parseInt(value, 10);
-    if (isNaN(parsed) || parsed <= 0) return 7;
-    return parsed;
+  function isExpectedViewerUrl(pathname) {
+    var viewers = getViewerPaths();
+    return pathname === viewers.v2Viewer || pathname === viewers.v5Viewer;
   }
 
-  function getContextPath() {
-    var gate = getGateConfig();
-    if (gate.contextPath) return gate.contextPath;
-    var body = document.body;
-    if (!body) return "";
-    return body.getAttribute("data-context-path") || "";
+  function rewritePathnameOnly(pathname) {
+    if (!isExpectedViewerUrl(pathname)) return pathname;
+    return replaceViewerPath(pathname);
   }
 
-  function getStaticBasePath() {
-    var contextPath = getContextPath();
-    if (contextPath) return contextPath + "/static";
-    return "/static";
+  function isAbsoluteUrl(url) {
+    return /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(url) || /^\/\//.test(url);
   }
 
-  function normalizeViewerBasePath(url) {
-    var value = (url || "").toString();
-    var staticBasePath = getStaticBasePath();
-    if (staticBasePath === "/static") return value;
-    return value.replace(/^\/static(?=\/)/, staticBasePath);
-  }
-
-  function setResolvedVersion(version) {
-    global.__PDFJS_VERSION__ = version === "v5" ? "v5" : "v2";
-    decisionResolved = true;
-    flushDecisionCallbacks();
-  }
-
-  function flushDecisionCallbacks() {
-    while (decisionCallbacks.length > 0) {
-      var cb = decisionCallbacks.shift();
-      try {
-        cb(global.__PDFJS_VERSION__);
-      } catch (e) {}
+  function buildOutputUrl(input, parsed) {
+    if (isAbsoluteUrl(input)) {
+      return parsed.toString();
     }
+    return parsed.pathname + parsed.search + parsed.hash;
   }
 
-  function whenDecisionReady(callback) {
-    if (decisionResolved) {
-      callback(global.__PDFJS_VERSION__);
-      return;
-    }
-    decisionCallbacks.push(callback);
-  }
-
-  function setPrefCookie(version) {
-    var gate = getGateConfig();
-    var ttlSeconds = gate.ttlDays * 24 * 60 * 60;
-    document.cookie =
-      PREF_COOKIE_NAME + "=" + version +
-      "; Max-Age=" + ttlSeconds +
-      "; Path=/" +
-      "; SameSite=Lax" +
-      "; Secure";
-  }
-
-  function resolvePdfjsDir(version) {
-    var current = version || global.__PDFJS_VERSION__ || "v2";
-    return current === "v5" ? PDFJS_DIR_MODERN : PDFJS_DIR_LEGACY;
-  }
-
-  function encodeFileUrlForViewer(fileUrl) {
-    var value = fileUrl || "";
-    return encodeURI(value)
-      .replace(/\?/g, "%3F")
-      .replace(/&/g, "%26")
-      .replace(/#/g, "%23");
-  }
-
-  function buildViewerUrl(fileUrl, page, forceVersion) {
-    var dirName = resolvePdfjsDir(forceVersion);
-    var url = getStaticBasePath() + "/" + dirName + "/web/viewer.html?file=" + encodeFileUrlForViewer(fileUrl);
-    if (page) {
-      url += "#page=" + encodeURIComponent(page);
-    }
-    return url;
-  }
-
-  function resolveViewerUrlFromLink(rawLink, forceVersion) {
-    var input = (rawLink || "").toString().trim();
+  function rewriteViewerUrl(rawUrl) {
+    var input = (rawUrl || "").toString();
     if (!input) return input;
 
-    var marker = "/web/viewer.html?file=";
-    var markerIndex = input.indexOf(marker);
-    if (markerIndex >= 0) {
-      var afterMarker = input.slice(markerIndex + marker.length);
-      var hashIndex = afterMarker.indexOf("#");
-      var encodedFile = hashIndex >= 0 ? afterMarker.slice(0, hashIndex) : afterMarker;
-      var hash = hashIndex >= 0 ? afterMarker.slice(hashIndex) : "";
-
-      var fileUrl = encodedFile;
-      try {
-        fileUrl = decodeURIComponent(encodedFile);
-      } catch (e) {
-        fileUrl = encodedFile;
-      }
-      var rebuilt = buildViewerUrl(fileUrl, "", forceVersion);
-      return hash ? rebuilt + hash : rebuilt;
-    }
-
-    if (/\.pdf(?:$|[?#])/i.test(input)) {
-      var hashMatch = /#(?:.*&)?page=([^&]+)/.exec(input);
-      var page = hashMatch ? hashMatch[1] : "";
-      var fileOnly = input.split("#")[0];
-      return buildViewerUrl(fileOnly, page, forceVersion);
-    }
-
-    return input;
-  }
-
-  function isModernViewerUrl(viewerUrl) {
-    return !!viewerUrl && viewerUrl.indexOf(PDFJS_DIR_MODERN) >= 0;
-  }
-
-  function canAccessViewerWindow(win) {
     try {
-      return !!(win && win.location && typeof win.location.href === "string");
+      // pathname だけを書き換え、query/hash はそのまま維持する。
+      var parsed = new URL(input, global.location.href);
+      parsed.pathname = rewritePathnameOnly(parsed.pathname);
+      return buildOutputUrl(input, parsed);
     } catch (e) {
-      return false;
+      // URL として解釈できない場合は元文字列を返す。
+      return input;
     }
   }
 
-  function isViewerReady(win) {
-    try {
-      if (!win) return false;
-      var app = win.PDFViewerApplication;
-      if (!app) return false;
-      if (app.initialized === true) return true;
-      if (app.pdfViewer) return true;
-      return false;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  function downgradeToV2() {
-    if (global.__PDFJS_VERSION__ !== "v2") {
-      global.__PDFJS_VERSION__ = "v2";
-    }
-    setPrefCookie("v2");
-  }
-
-  // v5 运行时失败时，统一降级到 v2 并整页重载（仅触发一次）。
-  function downgradeToV2AndReload() {
-    downgradeToV2();
-    if (global.__PDFJS_V5_RELOAD_TRIGGERED__ === true) return;
-    global.__PDFJS_V5_RELOAD_TRIGGERED__ = true;
-    try {
-      global.location.reload();
-    } catch (e) {}
-  }
-
-  function applyRuntimeFallbackForFrame(target, modernUrl) {
-    if (!target || !modernUrl || !isModernViewerUrl(modernUrl)) return;
-
-    var startedAt = Date.now();
-    var done = false;
-
-    function fallbackToLegacy() {
-      if (done) return;
-      done = true;
-      downgradeToV2AndReload();
-    }
-
-    function finish() {
-      done = true;
-    }
-
-    target.addEventListener("error", fallbackToLegacy, { once: true });
-    target.addEventListener("load", function () {
-      var timer = global.setInterval(function () {
-        if (done) {
-          global.clearInterval(timer);
-          return;
-        }
-        var win = target.contentWindow;
-        if (isViewerReady(win)) {
-          finish();
-          global.clearInterval(timer);
-          return;
-        }
-        if (Date.now() - startedAt > VIEWER_BOOT_TIMEOUT_MS) {
-          global.clearInterval(timer);
-          fallbackToLegacy();
-        }
-      }, 200);
-    }, { once: true });
-  }
-
-  function monitorPopupAndFallback(popup, modernUrl) {
-    if (!popup || !modernUrl || !isModernViewerUrl(modernUrl)) return;
-
-    var startedAt = Date.now();
-    var timer = global.setInterval(function () {
-      if (!popup || popup.closed) {
-        global.clearInterval(timer);
-        return;
-      }
-      if (!canAccessViewerWindow(popup)) {
-        global.clearInterval(timer);
-        return;
-      }
-      if (isViewerReady(popup)) {
-        global.clearInterval(timer);
-        return;
-      }
-      if (Date.now() - startedAt > VIEWER_BOOT_TIMEOUT_MS) {
-        downgradeToV2AndReload();
-        global.clearInterval(timer);
-      }
-    }, 250);
-  }
-
+  // data-viewer-template / href から最終 URL を決定して要素に反映する。
   function ensureViewerUrl(element) {
     if (!element) return "";
+
     var template = element.getAttribute("data-viewer-template");
     if (!template) {
-      return resolveViewerUrlFromLink(element.getAttribute("href") || "");
+      return rewriteViewerUrl(element.getAttribute("href") || "");
     }
-
-    var current = element.getAttribute("data-viewer-url") || "";
-    if (current && current.indexOf("{pdfjs-dir-name}") < 0) {
-      return current;
-    }
-
-    var dirName = resolvePdfjsDir();
-    var fileUrl = element.getAttribute("data-pdf-url") || "";
-    var page = element.getAttribute("data-page") || "1";
-
-    var resolved = template
-      .replace(/\{pdfjs-dir-name\}/g, dirName)
-      .replace(/\{pdf-file-url-encoded\}/g, encodeFileUrlForViewer(fileUrl))
-      .replace(/\{pdf-file-url\}/g, fileUrl)
-      .replace(/\{page\}/g, encodeURIComponent(page));
-    resolved = normalizeViewerBasePath(resolved);
-
+    var resolved = rewriteViewerUrl(template);
     element.setAttribute("data-viewer-url", resolved);
     return resolved;
   }
 
+  function setIframeViewer(iframeId, viewerUrl) {
+    var iframe = document.getElementById(iframeId);
+    if (!iframe) return false;
+    iframe.src = rewriteViewerUrl(viewerUrl || "about:blank");
+    return false;
+  }
+
+  function openPdfViewer(link, option) {
+    var rewritten = rewriteViewerUrl(link);
+    if (typeof global.openReportWithOption !== "function") return false;
+    return global.openReportWithOption(rewritten, option);
+  }
+
   function applyAllTemplates(root) {
+    // data-viewer-template を持つ要素を一括初期化する。
     var scope = root || document;
     var elements = scope.querySelectorAll("[data-viewer-template]");
 
@@ -286,113 +134,27 @@
           element.target = "_blank";
           element.rel = "noopener noreferrer";
         }
-      } else if (tag === "IFRAME" || tag === "FRAME") {
-        if (element.getAttribute("data-auto-load") === "true") {
-          element.src = viewerUrl;
-          applyRuntimeFallbackForFrame(element, viewerUrl);
-        }
+      } else if ((tag === "IFRAME" || tag === "FRAME") && element.getAttribute("data-auto-load") === "true") {
+        element.src = viewerUrl;
       }
     });
-  }
-
-  function setIframeViewer(iframeId, viewerUrl) {
-    var iframe = document.getElementById(iframeId);
-    if (!iframe) return false;
-    iframe.src = viewerUrl || "about:blank";
-    applyRuntimeFallbackForFrame(iframe, viewerUrl);
-    return false;
-  }
-
-  function openWin(url, winName) {
-    var popup = global.open(url, winName || "pdf_viewer", "width=1000,height=700,scrollbars=yes,resizable=yes");
-    monitorPopupAndFallback(popup, url);
-    return false;
-  }
-
-  function openPdfViewer(link, option) {
-    var rewrittenLink = resolveViewerUrlFromLink(link);
-    try {
-      if (typeof global.openReportWithOption === "function") {
-        return global.openReportWithOption(rewrittenLink, option);
-      }
-      return false;
-    } catch (e) {
-      downgradeToV2AndReload();
-      return false;
-    }
-  }
-
-  function installClickFallback() {
-    document.addEventListener("click", function (event) {
-      var node = event.target;
-      while (node && node !== document) {
-        if (node.nodeType === 1 && node.hasAttribute && node.hasAttribute("data-viewer-template")) {
-          var url = ensureViewerUrl(node);
-          if (!url) return;
-          if (node.tagName === "A" && node.getAttribute("data-link-mode") === "blank") {
-            event.preventDefault();
-            var popup = global.open(url, "_blank", "noopener,noreferrer");
-            monitorPopupAndFallback(popup, url);
-          }
-          return;
-        }
-        node = node.parentNode;
-      }
-    }, true);
-  }
-
-  function resolveGateDecision() {
-    var gate = getGateConfig();
-    if (gate.pref) {
-      setResolvedVersion(gate.pref);
-      return;
-    }
-    if (!gate.uaOk) {
-      setResolvedVersion("v2");
-      setPrefCookie("v2");
-      return;
-    }
-
-    global.__PDFJS_V5_SYNTAX_OK__ = false;
-    var probe = document.createElement("script");
-    probe.src = getContextPath() + PROBE_SCRIPT_PATH;
-    probe.async = true;
-    probe.onload = function () {
-      if (global.__PDFJS_V5_SYNTAX_OK__ === true) {
-        setResolvedVersion("v5");
-        setPrefCookie("v5");
-      } else {
-        setResolvedVersion("v2");
-        setPrefCookie("v2");
-      }
-    };
-    probe.onerror = function () {
-      setResolvedVersion("v2");
-      setPrefCookie("v2");
-    };
-    document.head.appendChild(probe);
   }
 
   function initPage() {
     if (initialized) return;
     initialized = true;
-    resolveGateDecision();
-    whenDecisionReady(function () {
-      applyAllTemplates(document);
-    });
+
+    global.__PDFJS_VERSION__ = resolveFinalVersion();
+    applyAllTemplates(document);
   }
 
   global.PdfViewerRouter = {
     initPage: initPage,
-    buildViewerUrl: buildViewerUrl,
-    setIframeViewer: setIframeViewer,
-    openWin: openWin,
     ensureViewerUrl: ensureViewerUrl,
-    resolveViewerUrlFromLink: resolveViewerUrlFromLink,
+    rewriteViewerUrl: rewriteViewerUrl,
+    setIframeViewer: setIframeViewer,
     openPdfViewer: openPdfViewer
   };
-
-  installClickFallback();
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initPage);

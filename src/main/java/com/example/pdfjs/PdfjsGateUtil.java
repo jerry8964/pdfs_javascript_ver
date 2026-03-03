@@ -1,112 +1,68 @@
 package com.example.pdfjs;
 
-import javax.servlet.http.Cookie;
-import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class PdfjsGateUtil {
   private PdfjsGateUtil() {}
 
-  public static final String PREF_COOKIE_NAME = "pdfjs_pref";
-  public static final int DEFAULT_TTL_DAYS = 7;
+  // UA 文字列から主要ブラウザのメジャーバージョンを抽出するための事前コンパイル正規表現。
+  private static final Pattern EDGE_MAJOR_PATTERN = Pattern.compile("Edg/(\\d+)");
+  private static final Pattern CHROME_MAJOR_PATTERN = Pattern.compile("Chrome/(\\d+)");
+  private static final Pattern FIREFOX_MAJOR_PATTERN = Pattern.compile("Firefox/(\\d+)");
 
-  // Cookie に保存された最終判定（v2/v5）を読み取る。
-  public static String readPrefFromCookies(Cookie[] cookies) {
-    if (cookies == null) return null;
-    for (Cookie cookie : cookies) {
-      if (cookie == null) continue;
-      if (!PREF_COOKIE_NAME.equals(cookie.getName())) continue;
-      String value = normalizePref(cookie.getValue());
-      if (value != null) return value;
-    }
-    return null;
+  // UA 判定結果を "v2" または "v5" で返す（呼び出し側がそのまま使える形）。
+  public static String suggestVersionFromUa(String userAgent) {
+    return isUaOkForV5(userAgent) ? "v5" : "v2";
   }
 
-  // TTL 日数は正の整数のみ有効とし、無効値は既定値へフォールバックする。
-  public static int resolveTtlDays(String raw) {
-    if (raw == null) return DEFAULT_TTL_DAYS;
-    try {
-      int days = Integer.parseInt(raw.trim());
-      return days > 0 ? days : DEFAULT_TTL_DAYS;
-    } catch (Exception ignored) {
-      return DEFAULT_TTL_DAYS;
-    }
-  }
-
-  // UA 判定は v5 を安全に許可できる場合のみ true を返す。
+  // v5 候補にできるブラウザのみ true を返す。
+  // 閾値:
+  // - Edge(Chromium): 110+
+  // - Chrome: 110+
+  // - Firefox: 115+
+  // - Safari: 16.4+
   public static boolean isUaOkForV5(String userAgent) {
     if (userAgent == null || userAgent.trim().isEmpty()) return false;
     String ua = userAgent.trim();
 
-    if (isSuspiciousUserAgent(ua)) return false;
-    if (isIE11(ua) || ua.contains("Edge/")) return false;
+    int edgeMajor = parseMajor(ua, EDGE_MAJOR_PATTERN);
+    if (edgeMajor >= 0) return edgeMajor >= 110;
 
-    // ブラウザ種別は短絡評価で判定する。
-    // 先に一致した分岐で即時 return するため、閾値の保守が追いやすい。
-    int edgeMajor = parseMajor(ua, "Edg/");
-    if (edgeMajor > 0) return edgeMajor >= 110;
+    int chromeMajor = parseMajor(ua, CHROME_MAJOR_PATTERN);
+    if (chromeMajor >= 0) {
+      // Chromium Edge / Opera / iOS Chrome は Chrome 判定から除外する。
+      if (ua.contains("Edg/") || ua.contains("OPR/") || ua.contains("CriOS/")) return false;
+      return chromeMajor >= 110;
+    }
 
-    int chromeMajor = parseMajor(ua, "Chrome/");
-    if (chromeMajor > 0) return chromeMajor >= 110;
-
-    int firefoxMajor = parseMajor(ua, "Firefox/");
-    if (firefoxMajor > 0) return firefoxMajor >= 128;
+    int firefoxMajor = parseMajor(ua, FIREFOX_MAJOR_PATTERN);
+    if (firefoxMajor >= 0) return firefoxMajor >= 115;
 
     int[] safari = parseSafariVersion(ua);
     if (safari != null) return compareMajorMinor(safari[0], safari[1], 16, 4) >= 0;
 
     return false;
   }
-
-  private static String normalizePref(String raw) {
-    if (raw == null) return null;
-    String value = raw.trim().toLowerCase(Locale.ROOT);
-    if ("v2".equals(value) || "v5".equals(value)) return value;
-    return null;
-  }
-
-  private static boolean isIE11(String userAgent) {
-    return userAgent.contains("Trident/7.0") && userAgent.contains("rv:11.0");
-  }
-
-  private static boolean isSuspiciousUserAgent(String userAgent) {
-    if (userAgent.length() < 20) return true;
-    String lower = userAgent.toLowerCase(Locale.ROOT);
-    if (lower.contains("headless") || lower.contains("phantomjs") || lower.contains("bot")) return true;
-
-    boolean hasChrome = userAgent.contains("Chrome/");
-    boolean hasEdg = userAgent.contains("Edg/");
-    boolean hasFirefox = userAgent.contains("Firefox/");
-    boolean hasSafari = userAgent.contains("Safari/");
-    boolean hasVersion = userAgent.contains("Version/");
-
-    if (hasFirefox && hasChrome) return true;
-    if (hasEdg && !hasChrome) return true;
-    if (hasSafari && !hasVersion && !hasChrome && !hasEdg) return true;
-    return false;
-  }
-
-  private static int parseMajor(String userAgent, String token) {
-    int index = userAgent.indexOf(token);
-    if (index < 0) return -1;
-    int start = index + token.length();
-    int end = start;
-    while (end < userAgent.length()) {
-      char ch = userAgent.charAt(end);
-      if (ch < '0' || ch > '9') break;
-      end++;
-    }
-    if (end == start) return -1;
+  // 正規表現で UA からメジャーバージョンを抽出する。
+  // 見つからない、または数値化できない場合は -1 を返す。
+  private static int parseMajor(String userAgent, Pattern pattern) {
+    Matcher matcher = pattern.matcher(userAgent);
+    if (!matcher.find()) return -1;
     try {
-      return Integer.parseInt(userAgent.substring(start, end));
+      return Integer.parseInt(matcher.group(1));
     } catch (Exception ignored) {
       return -1;
     }
   }
 
-  // Safari は Version/x.y を優先し、Chrome/Edge 系 UA は除外する。
+  // Safari は Version/x.y を優先して解析する。
+  // Chrome/Edge/Opera など Safari 互換 UA は誤判定防止のため除外する。
   private static int[] parseSafariVersion(String userAgent) {
     if (!userAgent.contains("Safari/")) return null;
-    if (userAgent.contains("Chrome/") || userAgent.contains("Chromium/") || userAgent.contains("Edg/")) return null;
+    if (userAgent.contains("Chrome/") || userAgent.contains("Chromium/") || userAgent.contains("Edg/") || userAgent.contains("OPR/")) {
+      return null;
+    }
 
     String token = "Version/";
     int index = userAgent.indexOf(token);
@@ -115,8 +71,8 @@ public final class PdfjsGateUtil {
     int start = index + token.length();
     int end = userAgent.indexOf(' ', start);
     if (end < 0) end = userAgent.length();
-    String version = userAgent.substring(start, end);
-    String[] parts = version.split("\\.");
+
+    String[] parts = userAgent.substring(start, end).split("\\.");
     if (parts.length == 0) return null;
 
     int major;
@@ -126,6 +82,7 @@ public final class PdfjsGateUtil {
     } catch (Exception ignored) {
       return null;
     }
+
     if (parts.length > 1) {
       try {
         minor = Integer.parseInt(parts[1]);
@@ -133,12 +90,13 @@ public final class PdfjsGateUtil {
         minor = 0;
       }
     }
+
     return new int[] { major, minor };
   }
 
+  // major/minor の大小比較を行う。
   private static int compareMajorMinor(int aMajor, int aMinor, int bMajor, int bMinor) {
     if (aMajor != bMajor) return aMajor - bMajor;
     return aMinor - bMinor;
   }
-
 }

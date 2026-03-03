@@ -11,19 +11,17 @@
   <h1>1. openWin パターン</h1>
 
   <a href="javascript:void(0);"
-     data-pdf-url="${pageContext.request.contextPath}/pdfs/sampleA.pdf"
-     data-page="1"
-     data-viewer-template="${pageContext.request.contextPath}/static/{pdfjs-dir-name}/web/viewer.html?file={pdf-file-url-encoded}#page={page}"
-     onclick="return PdfViewerRouter.openWin(PdfViewerRouter.ensureViewerUrl(this), 'report_pop_A');">
+     data-viewer-template="/pc/static/js/pdf_js_2.2.8/web/viewer.html?file=${pageContext.request.contextPath}/pdfs/sampleA.pdf#page=1"
+     onclick="return openPdfWin(PdfViewerRouter.ensureViewerUrl(this), 'report_pop_A', '1000', '700');">
     レポートA
   </a>
   <br />
   <a href="javascript:void(0);"
-     data-pdf-url="${pageContext.request.contextPath}/pdfs/sampleB.pdf"
-     data-page="1"
-     data-viewer-template="${pageContext.request.contextPath}/static/{pdfjs-dir-name}/web/viewer.html?file={pdf-file-url-encoded}#page={page}"
-     onclick="return PdfViewerRouter.openWin(PdfViewerRouter.ensureViewerUrl(this), 'report_pop_B');">
+     data-viewer-template="/pc/static/js/pdf_js_2.2.8/web/viewer.html?file=${pageContext.request.contextPath}/pdfs/sampleB.pdf#page=1"
+     onclick="return openPdfWin(PdfViewerRouter.ensureViewerUrl(this), 'report_pop_B', '1000', '700');">
     レポートB
   </a>
+
+  <script src="${pageContext.request.contextPath}/js/default.js"></script>
 </body>
 </html>

@@ -15,9 +15,7 @@
 
   <h3>2-1. クリックで読み込み</h3>
   <a href="javascript:void(0);"
-     data-pdf-url="${pageContext.request.contextPath}/pdfs/sampleA.pdf"
-     data-page="1"
-     data-viewer-template="${pageContext.request.contextPath}/static/{pdfjs-dir-name}/web/viewer.html?file={pdf-file-url-encoded}#page={page}"
+     data-viewer-template="/pc/static/js/pdf_js_2.2.8/web/viewer.html?file=${pageContext.request.contextPath}/pdfs/sampleA.pdf#page=1"
      onclick="return PdfViewerRouter.setIframeViewer('pdfFrame', PdfViewerRouter.ensureViewerUrl(this));">
     レポートAを表示
   </a>
@@ -26,9 +24,7 @@
   <h3>2-2. 非クリック（ページロード時に自動読み込み）</h3>
   <a href="javascript:void(0);"
      id="autoLoadLink"
-     data-pdf-url="${pageContext.request.contextPath}/pdfs/sampleB.pdf"
-     data-page="1"
-     data-viewer-template="${pageContext.request.contextPath}/static/{pdfjs-dir-name}/web/viewer.html?file={pdf-file-url-encoded}#page={page}"
+     data-viewer-template="/pc/static/js/pdf_js_2.2.8/web/viewer.html?file=${pageContext.request.contextPath}/pdfs/sampleB.pdf#page=1"
      onclick="return false;">
     レポートB（自動表示対象）
   </a>

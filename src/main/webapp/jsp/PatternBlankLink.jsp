@@ -12,27 +12,21 @@
 <!-- 現実のコード Start-->
  <!-- Parttern 1 -->
   <a href="javascript:void(0);"
-      data-pdf-url="${pageContext.request.contextPath}/pdfs/sampleA.pdf"
-      data-page="1"
-      data-viewer-template="${pageContext.request.contextPath}/static/{pdfjs-dir-name}/web/viewer.html?file={pdf-file-url-encoded}#page={page}"
-      onclick="return openWin(PdfViewerRouter.ensureViewerUrl(this), 'report_pop', '820', '640');"
+      data-viewer-template="/pc/static/js/pdf_js_2.2.8/web/viewer.html?file=${pageContext.request.contextPath}/pdfs/sampleA.pdf#page=1"
+      onclick="return openPdfWin(PdfViewerRouter.ensureViewerUrl(this), 'report_pop', '820', '640');"
       id="pdf">report_A
   </a>
   <!-- Parttern 2 -->
   <a tableindex="0"
      href="javascript:void(0);"
-     data-pdf-url="${pageContext.request.contextPath}/pdfs/sampleA.pdf"
-     data-page="1"
-     data-viewer-template="${pageContext.request.contextPath}/static/{pdfjs-dir-name}/web/viewer.html?file={pdf-file-url-encoded}#page={page}"
-     onclick="return toFundReportLink(PdfViewerRouter.ensureViewerUrl(this), '', '2');">
+     data-viewer-template="/pc/static/js/pdf_js_2.2.8/web/viewer.html?file=${pageContext.request.contextPath}/pdfs/sampleA.pdf#page=1"
+     onclick="return toFundReportPdfLink(PdfViewerRouter.ensureViewerUrl(this), '', '2');">
     report_A
   </a>
 <!-- 現実のコード End-->
   <br />
   <a data-link-mode="blank"
-     data-pdf-url="${pageContext.request.contextPath}/pdfs/sampleB.pdf"
-     data-page="1"
-     data-viewer-template="${pageContext.request.contextPath}/static/{pdfjs-dir-name}/web/viewer.html?file={pdf-file-url-encoded}#page={page}">
+     data-viewer-template="/pc/static/js/pdf_js_2.2.8/web/viewer.html?file=${pageContext.request.contextPath}/pdfs/sampleB.pdf#page=1">
     report_B
   </a>
 
