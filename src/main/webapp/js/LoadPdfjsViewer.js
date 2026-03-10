@@ -1,6 +1,8 @@
 /* global document, window */
 (function (global) {
   var initialized = false;
+  var DIR_V2 = "pdf_js_2.2.8";
+  var DIR_V5 = "pdf_js_5.4.530-legacy";
 
   // 受け取ったバージョン候補を v2/v5 のどちらかに正規化する。
   function normalizeVersion(value) {
@@ -29,41 +31,14 @@
     }
   }
 
-  function normalizeBasePath(path) {
-    var value = (path || "").toString();
-    if (!value) return "/";
-    if (value.charAt(0) !== "/") value = "/" + value;
-    if (value.charAt(value.length - 1) !== "/") value += "/";
-    return value;
-  }
-
-  function getViewerPaths() {
-    // viewer.html の実パス定義。
-    // 環境差分がある場合は include JSP 側のグローバル変数で上書き可能。
-    var baseV2 = normalizeBasePath(global.__PDFJS_BASE_V2__ || "/pc/static/js/pdf_js_2.2.8/");
-    var baseV5 = normalizeBasePath(global.__PDFJS_BASE_V5__ || "/pc/static/js/pdf_js_5.4.530-legacy/");
-    return {
-      v2Viewer: baseV2 + "web/viewer.html",
-      v5Viewer: baseV5 + "web/viewer.html"
-    };
-  }
-
-  function replaceViewerPath(pathname) {
-    // 安全性優先:
-    // 既知の viewer.html パスに完全一致した場合のみ v2/v5 を切り替える。
-    var viewers = getViewerPaths();
-    if (pathname !== viewers.v2Viewer && pathname !== viewers.v5Viewer) return pathname;
-    return global.__PDFJS_VERSION__ === "v5" ? viewers.v5Viewer : viewers.v2Viewer;
-  }
-
-  function isExpectedViewerUrl(pathname) {
-    var viewers = getViewerPaths();
-    return pathname === viewers.v2Viewer || pathname === viewers.v5Viewer;
-  }
-
   function rewritePathnameOnly(pathname) {
-    if (!isExpectedViewerUrl(pathname)) return pathname;
-    return replaceViewerPath(pathname);
+    // 判定結果が v2 の場合は v5 トークンがあれば v2 に戻す。
+    // 判定結果が v5 の場合のみ v2 トークンを v5 に切り替える。
+    // 該当トークンがない URL はそのまま返すため、安全側で動作する。
+    if (global.__PDFJS_VERSION__ === "v5") {
+      return pathname.replace(DIR_V2, DIR_V5);
+    }
+    return pathname.replace(DIR_V5, DIR_V2);
   }
 
   function isAbsoluteUrl(url) {
