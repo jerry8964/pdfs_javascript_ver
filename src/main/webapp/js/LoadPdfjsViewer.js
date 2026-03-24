@@ -52,6 +52,45 @@
     return parsed.pathname + parsed.search + parsed.hash;
   }
 
+  function toAbsoluteUrlOrNull(raw) {
+    try {
+      return new URL(raw).href;
+    } catch (e1) {
+      try {
+        return new URL(raw, global.location.href).href;
+      } catch (e2) {
+        return null;
+      }
+    }
+  }
+
+  function normalizeFileParamForV5(parsed) {
+    // v5 のときだけ file パラメータを正規化する。
+    // v2 は現行動作を崩さないため、この処理を通さない。
+    if (global.__PDFJS_VERSION__ !== "v5") return;
+
+    var fileParam = parsed.searchParams.get("file");
+    if (!fileParam) return;
+
+    // まずはそのまま URL 化を試す。
+    var normalized = toAbsoluteUrlOrNull(fileParam);
+    if (normalized) {
+      parsed.searchParams.set("file", normalized);
+      return;
+    }
+
+    // 失敗時のみ、%3F などを含むケース向けに 1 回だけ復号して再試行する。
+    try {
+      var decoded = decodeURIComponent(fileParam);
+      normalized = toAbsoluteUrlOrNull(decoded);
+      if (normalized) {
+        parsed.searchParams.set("file", normalized);
+      }
+    } catch (e) {
+      // 正規化できない場合は元の値を維持する（Fail-safe）。
+    }
+  }
+
   function rewriteViewerUrl(rawUrl) {
     var input = (rawUrl || "").toString();
     if (!input) return input;
@@ -60,6 +99,7 @@
       // pathname だけを書き換え、query/hash はそのまま維持する。
       var parsed = new URL(input, global.location.href);
       parsed.pathname = rewritePathnameOnly(parsed.pathname);
+      normalizeFileParamForV5(parsed);
       return buildOutputUrl(input, parsed);
     } catch (e) {
       // URL として解釈できない場合は元文字列を返す。
